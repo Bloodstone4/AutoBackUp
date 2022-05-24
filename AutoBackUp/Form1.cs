@@ -125,19 +125,26 @@ namespace AutoBackUp
         }
 
         public async Task CopyDirectoriesAsync()
-        {       
-
+        {
+            List<Logs> logList = new List<Logs>();
             foreach (DataGridViewRow row in BackUpFolders.Rows)
             {
+               
                 if (row.Cells[0].Value != null && row.Cells[1].Value != null)
                 {
+                    string sourceDir = row.Cells[0].Value.ToString();
+                    string destDir = row.Cells[1].Value.ToString();
                     int countFiles = 0;
                    CountFiles(row.Cells[0].Value.ToString(), ref countFiles);
                    progressBarElems.Maximum = countFiles;
                     progressBarElems.Value = 0;
-                    await Task.Run(() => CopyDirectory(row.Cells[0].Value.ToString(), row.Cells[1].Value.ToString(), true));
+                    await Task.Run(() => CopyDirectory(row.Cells[0].Value.ToString(), row.Cells[1].Value.ToString(), true, out List<string> fileList, out long filesSize));
                     // var directories = System.IO.Directory.GetDirectories(row.Cells[0].Value.ToString());                
-                   
+                    Logs logs = new Logs()
+                    {
+                        DirectoryName = String.Format("{0}     -      {1}", sourceDir, destDir),
+                        FilesList= fileList,
+                    };
                     progressBarCountRows.Increment(1);
                     
                 }
