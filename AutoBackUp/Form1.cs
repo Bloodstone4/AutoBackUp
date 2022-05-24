@@ -22,33 +22,55 @@ namespace AutoBackUp
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            ReadPaths(@"BackUpPath.xml");            
+            ReadPaths(@"BackUpPath.xml", "BackUpTime.xml");            
             timer1.Interval = 60000;
             timer1.Tick += new EventHandler(TimerEventProcessor);
             timer1.Start();
-            
+
+            notifyIcon2.BalloonTipTitle = "AutoBackUp";
+            notifyIcon2.BalloonTipText = "AutoBackUp свернуто";
+            notifyIcon2.Text = "AutoBackUp";
+
         }
 
-        private static void TimerEventProcessor(Object myObject,
+        private void TimerEventProcessor(Object myObject,
                                           EventArgs myEventArgs)
         {
-           // if ()
+           if (DateTime.Now.Hour== (int)hours.Value && DateTime.Now.Minute == (int)minutes.Value)
+            {
+                timer2.Interval = 1000;
+                timer2.Tick += new EventHandler(RefreshCounter);
+                timer2.Start();
+                progressBarCountRows.Maximum = BackUpFolders.RowCount - 1;
+                progressBarCountRows.Value = 0;
+                CopyDirectories();
+            }
 
         }
 
-        public void ReadPaths(in string path)
+
+
+        public void ReadPaths(in string path, in string path2)
         {
 
 
-            List<BackUpItem> backUpItemSet = new List<BackUpItem>();            
+            List<BackUpItem> backUpItemSet = new List<BackUpItem>();
+            List<int> backUpTime = new List<int>();
             if (File.Exists(path))
             {
                 XmlSerializer xmlDeserializer = new XmlSerializer(typeof(List<BackUpItem>));
+                XmlSerializer xmlDeserializerTime = new XmlSerializer(typeof(List<int>));
                 using (FileStream fs = new FileStream(path, FileMode.Open))
 
                 {
                     backUpItemSet = xmlDeserializer.Deserialize(fs) as List<BackUpItem>;
+                   
                 }
+
+                using (FileStream fs = new FileStream(path2, FileMode.Open))
+                {
+                    backUpTime = xmlDeserializerTime.Deserialize(fs) as List<int>;
+                }               
 
                 foreach (var backUp in backUpItemSet)
                 {
@@ -57,6 +79,13 @@ namespace AutoBackUp
                     row.Cells[1].Value = backUp.BackUpPathDestanation;
 
                     BackUpFolders.Rows.Add(row);
+                }
+
+                // Set backUp time
+                if (backUpTime.Count == 2)
+                {
+                    hours.Value = backUpTime[0];
+                    minutes.Value = backUpTime[1];
                 }
             }
         }
@@ -75,6 +104,7 @@ namespace AutoBackUp
             timer2.Tick += new EventHandler(RefreshCounter);
             timer2.Start();
             progressBarCountRows.Maximum = BackUpFolders.RowCount-1;
+            progressBarCountRows.Value = 0;
            CopyDirectories();
 
            
@@ -102,15 +132,20 @@ namespace AutoBackUp
                 if (row.Cells[0].Value != null && row.Cells[1].Value != null)
                 {
                     int countFiles = 0;
-                    //CountFiles(sourceDir,ref countFiles);
-                    //progressBarElems.Maximum = countFiles;
+                   CountFiles(row.Cells[0].Value.ToString(), ref countFiles);
+                   progressBarElems.Maximum = countFiles;
+                    progressBarElems.Value = 0;
                     await Task.Run(() => CopyDirectory(row.Cells[0].Value.ToString(), row.Cells[1].Value.ToString(), true));
-                    // var directories = System.IO.Directory.GetDirectories(row.Cells[0].Value.ToString());                   
+                    // var directories = System.IO.Directory.GetDirectories(row.Cells[0].Value.ToString());                
                    
-                    //progressBarCountRows.Increment(1);
+                    progressBarCountRows.Increment(1);
+                    
                 }
             }
-            MessageBox.Show("Успешно");
+            MessageBox.Show(String.Format("Успешно! \n кол-во перенесённых файлов - {0} \n общий объем перенесенных данных - {1}", Counter.files, Counter.size/1000000.0));
+            timer2.Stop();
+            Counter.files = 0;
+            Counter.size = 0;
 
         }
 
@@ -156,13 +191,20 @@ namespace AutoBackUp
             foreach (FileInfo file in dir.GetFiles())
             {
                 string targetFilePath = Path.Combine(destinationDir, file.Name);
+                //string sourceFilePath = Path.Combine(sourceDir, file.Name);
                 if (File.Exists(targetFilePath)) {
-                    File.Delete(targetFilePath);
-                    file.CopyTo(targetFilePath);
+                    if (file.LastWriteTime> File.GetLastWriteTime(targetFilePath)) {
+                        File.Delete(targetFilePath);
+                        file.CopyTo(targetFilePath);
+                        Counter.files++;
+                        Counter.size += file.Length;
+                    }
                 }
                 else
                 {
                     file.CopyTo(targetFilePath);
+                    Counter.files++;
+                    Counter.size += file.Length;
                 }
                 Counter.count++;
             }
@@ -221,13 +263,27 @@ namespace AutoBackUp
 
         private void button2_Click(object sender, EventArgs e)
         {
+            if (File.Exists("BackUpPath.xml")) File.Delete("BackUpPath.xml");
+            if (File.Exists("BackUpPath.xml")) File.Delete("BackUpTime.xml");
             XmlSerializer xmlSerializer = new XmlSerializer(typeof(List<BackUpItem>));
-            List<BackUpItem> backUpItemSet = FillArray();                       
+            XmlSerializer xmlSerializerTime = new XmlSerializer(typeof(List<int>));
+            List<BackUpItem> backUpItemSet = FillArray();
+            List<int> backUpTime = GetTime().ToList();
             using (FileStream fs = new FileStream("BackUpPath.xml", FileMode.OpenOrCreate))
             {
                 xmlSerializer.Serialize(fs, backUpItemSet);
-                
+
             }
+            using (FileStream fs = new FileStream("BackUpTime.xml", FileMode.OpenOrCreate))
+            {
+                xmlSerializerTime.Serialize(fs, backUpTime);
+            }
+        }
+
+        public int[] GetTime()
+        {
+            int[] time = new int[] { (int)hours.Value, (int)minutes.Value };
+            return time;
         }
 
         public List<BackUpItem> FillArray()
@@ -244,6 +300,21 @@ namespace AutoBackUp
         private void numericUpDown1_ValueChanged(object sender, EventArgs e)
         {
 
+        }
+
+        private void BackgroundMode_Click(object sender, EventArgs e)
+        {            
+            WindowState = FormWindowState.Minimized;
+            this.Hide();
+            notifyIcon2.Visible = true;            
+            notifyIcon2.ShowBalloonTip(3000);
+        }
+
+        private void notifyIcon2_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            this.Show();
+            notifyIcon1.Visible = false;
+            WindowState = FormWindowState.Normal;
         }
     }
 
