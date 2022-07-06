@@ -120,12 +120,13 @@ namespace AutoBackUp
         private void RefreshCounter(Object myObject,
                                          EventArgs myEventArgs)
         {
-            progressBarElems.Value = Counter.count;
+            //progressBarElems.Value = Counter.count;
 
         }
 
         public async Task CopyDirectoriesAsync()
         {
+            Logs logs = new Logs();
             List<Logs> logList = new List<Logs>();
             foreach (DataGridViewRow row in BackUpFolders.Rows)
             {
@@ -138,21 +139,36 @@ namespace AutoBackUp
                    CountFiles(row.Cells[0].Value.ToString(), ref countFiles);
                    progressBarElems.Maximum = countFiles;
                     progressBarElems.Value = 0;
-                    await Task.Run(() => CopyDirectory(row.Cells[0].Value.ToString(), row.Cells[1].Value.ToString(), true, out List<string> fileList, out long filesSize));
+                    List<string> fileList = new List<string>();
+                    long filesSize = 0;
+                    long fileCounter = 0;
+                    await Task.Run(() => CopyDirectory(row.Cells[0].Value.ToString(), row.Cells[1].Value.ToString(), true, ref fileList, ref filesSize, ref fileCounter));
                     // var directories = System.IO.Directory.GetDirectories(row.Cells[0].Value.ToString());                
-                    Logs logs = new Logs()
-                    {
-                        DirectoryName = String.Format("{0}     -      {1}", sourceDir, destDir),
-                        FilesList= fileList,
-                    };
-                    progressBarCountRows.Increment(1);
+
+
+                    logs.DirectoryName = String.Format("{0}     -      {1}, \n кол-во скопированных файлов - {2} \nобщий объем скопированных файлов - {3} МБ \n\n", sourceDir, destDir, fileCounter, filesSize/1000000);
+                    logs.FilesList = fileList;
+                    logs.FilesSize = filesSize;
                     
+                    progressBarCountRows.Increment(1);
+
+                    var now = DateTime.Now;
+                    var path = String.Format("{6}\\BackUpLog_{0}-{1}-{2}-{3}-{4}-{5}.txt", now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, destDir);
+                    StreamWriter streamWriter = new StreamWriter(path);
+                    streamWriter.Write(logs.DirectoryName);
+                    foreach (var line in logs.FilesList)
+                    {
+                        streamWriter.WriteLine(line);
+                    }
+                    streamWriter.Close();
+
                 }
             }
-            MessageBox.Show(String.Format("Успешно! \n кол-во перенесённых файлов - {0} \n общий объем перенесенных данных - {1}", Counter.files, Counter.size/1000000.0));
+           
+            //MessageBox.Show(String.Format("Успешно! \n кол-во перенесённых файлов - {0} \n общий объем перенесенных данных - {1}", Counter.files, Counter.size/1000000.0));
             timer2.Stop();
-            Counter.files = 0;
-            Counter.size = 0;
+            //Counter.files = 0;
+            //Counter.size = 0;
 
         }
 
@@ -179,7 +195,7 @@ namespace AutoBackUp
             
         }
 
-        public void CopyDirectory(string sourceDir, string destinationDir, bool recursive)
+        public void CopyDirectory(string sourceDir, string destinationDir, bool recursive, ref List<string> fileList, ref long filesSize, ref long counter)
         {
             // Get information about the source directory
             var dir = new DirectoryInfo(sourceDir);
@@ -204,14 +220,18 @@ namespace AutoBackUp
                         File.Delete(targetFilePath);
                         file.CopyTo(targetFilePath);
                         Counter.files++;
-                        Counter.size += file.Length;
+                        filesSize += file.Length;
+                        fileList.Add(file.FullName + Environment.NewLine);
+                        counter++;
                     }
                 }
                 else
                 {
                     file.CopyTo(targetFilePath);
                     Counter.files++;
-                    Counter.size += file.Length;
+                    filesSize += file.Length;
+                    fileList.Add(file.FullName);
+                    counter++;
                 }
                 Counter.count++;
             }
@@ -222,7 +242,7 @@ namespace AutoBackUp
                 foreach (DirectoryInfo subDir in dirs)
                 {
                     string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-                    CopyDirectory(subDir.FullName, newDestinationDir, true);
+                    CopyDirectory(subDir.FullName, newDestinationDir, true, ref fileList ,ref filesSize, ref counter);
                 }
             }
             //MessageBox.Show(sourceDir);
